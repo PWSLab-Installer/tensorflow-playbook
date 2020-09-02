@@ -1,0 +1,104 @@
+- hosts: localhost
+  connection: local
+
+  vars:
+    pip_install_packages:
+        - name: zipp
+        - name: pip
+          state: latest
+        - name: tensorflow
+          state: latest
+  tasks:
+      
+    -   name: Check the version of release
+        command: hostnamectl
+        register: os_check
+        ignore_errors: yes
+
+    -   name: Install Role PIP
+        local_action: command ansible-galaxy install -f geerlingguy.pip 
+
+    -   name: Check if PIP is already installed
+        stat: path=/usr/bin/pip
+        register: pip_exists
+
+    -   name: Applying role PIP
+        command: mv ~/.ansible/roles/geerlingguy.pip ~/.ansible/roles/pwslab.pip
+        when: not pip_exists.stat.exists
+        ignore_errors: yes
+
+    -   name: Applying replacement
+        lineinfile:
+            dest: ~/.ansible/roles/pwslab.pip/defaults/main.yml
+            regexp: '^pip_package: '
+            line: 'pip_package: python3-pip'
+            state: present
+        when:
+            - os_check.stdout | regex_search("CentOS Linux 8") or os_check.stdout | regex_search("Ubuntu 20.04")
+            - not pip_exists.stat.exists
+
+    -   name: Installing PIP
+        include_role:
+            name: pwslab.pip
+        when: not pip_exists.stat.exists
+
+    -   name: Install Dependencies - Ubuntu
+        apt:
+            name: "{{ item }}"
+            state: present
+        loop:
+            - virtualenv
+        when:
+            - os_check.stdout | regex_search("Ubuntu") 
+    
+    -   name: Install virtualenv - CentOS 8
+        yum:
+            name: virtualenv
+            state: present
+        when:
+            - os_check.stdout | regex_search("CentOS Linux 8")
+
+    -   name: Install virtualenv - CentOS 7
+        pip:
+            name: virtualenv
+        when:
+            - os_check.stdout | regex_search("CentOS Linux 7")
+
+    -   name: update python3
+        package:
+            name: python3
+            state: latest
+
+    -   name: Install Tensorflow using pip3
+        pip:
+            name: "tensorflow"
+            state: latest
+            virtualenv: "{{ ansible_env.HOME }}/tensorflow"
+            virtualenv_python: python3
+        with_items:
+            - tensorflow
+            - pandas
+        when:
+            - not os_check.stdout | regex_search("CentOS Linux 7")
+
+    -   name: Upgrade PIP - CentOS 7
+        shell: pip install --upgrade pip
+        when:
+            - os_check.stdout | regex_search("CentOS Linux 7")
+
+    -   name: Install Tensorflow - CentOS 7 / Ubuntu 18
+        shell: pip install tensorflow
+        when:
+            - os_check.stdout | regex_search("CentOS Linux 7") or os_check.stdout | regex_search("Ubuntu 18")
+
+    # -   name: Install Tensorflow using pip3
+    #     pip:
+    #         name: "tensorflow"
+    #         state: latest
+    #         virtualenv: "{{ ansible_env.HOME }}/tensorflow"
+    #         virtualenv_python: python
+    #     with_items:
+    #         - tensorflow
+    #         - pandas
+    #     when:
+    #         - os_check.stdout | regex_search("CentOS Linux 7")
